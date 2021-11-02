@@ -226,15 +226,33 @@ print(TOY_ADJ_LIST)
 # COMMAND ----------
 
 # MAGIC %md ### Q3 Student Answers:
-# MAGIC > __a)__ Type your answer here!
+# MAGIC > __a)__ **It is common to explain PageRank using the analogy of a web surfer who clicks on links at random ad infinitum. In the context of this hypothetical infinite random walk, what does the PageRank metric measure/represent?**  
+# MAGIC >  
+# MAGIC > The PageRank measure represents the proportion of the time the proverbial web surfer reaches each node. 
 # MAGIC 
-# MAGIC > __b)__ Type your answer here!
+# MAGIC > __b)__ **What is the "Markov Property" and what does it mean in the context of PageRank?**   
+# MAGIC >   
+# MAGIC > Memorylessness with regard to state changes. The next state only depends on the current state and not the sequence of events that preceded it. In the context of PageRank, it means given a particular node, the probability of the next node in the random walk of our proverbial web surfer only depends on the the properties of that particular node and not in any way on the path they took to get to that node. (In this case, the probabilities of moving to one of the nodes linked to from this particular node.) 
 # MAGIC 
-# MAGIC > __c)__ Type your answer here! 
 # MAGIC 
-# MAGIC > __d)__ Type your answer here!
+# MAGIC > __c)__ **A Markov chain consists of $n$ states plus an $n\times n$ transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the $n$ states? what implications does this have about the size of the transition matrix?**  
+# MAGIC >   
+# MAGIC > The n states are just the n web pages/nodes in the graph. n states implies n x n possible transitions (i.e. from each node to every other node, including itself), which means the transition matrix has a size of n x n = n^2.
 # MAGIC 
-# MAGIC > __e)__ Type your answer here! 
+# MAGIC 
+# MAGIC > __d)__ **What is a "right stochastic matrix"? Fill in the code below to compute the transition matrix for the toy graph from question 2.**  
+# MAGIC >  
+# MAGIC > From the aync, it is: A right stochastic matrix is a square matrix of nonnegative real numbers, with each row summing to 1. If the row vector of node probabilities is on the left, when the row vector is multiplied by the right stochastic matrix, its weights are updated to a new probability distribution. 
+# MAGIC 
+# MAGIC > __e)__ **To compute the stable state distribution (i.e. PageRank) of a "nice" graph we can apply the power iteration method - repeatedly multiplying the transition matrix by itself, until the values no longer change. Apply this strategy to your transition matrix from `part d` to find the PageRank for each of the pages in your toy graph. Your code should print the results of each iteration. How many iterations does it take to converge? Which node is most 'central' (i.e. highest ranked)? Does this match your intuition?** 
+# MAGIC     * __`NOTE 1:`__ _this is a naive approach, we'll unpack what it means to be "nice" in the next question_.
+# MAGIC     * __`NOTE 2:`__ _no need to implement a stopping criteria, visual inspection should suffice_.**  
+# MAGIC >  
+# MAGIC > It seems to take 50 iterations to converge to the steady state result. However, it gets very close to this figure quite a bit earlier. The highest rank node is E. Visually, the way the graph is drawn with E at the center certainly makes it *seem* central, but I'm not sure what my intuition was. The rows tell you how many ways out of each node there are, but I'm not sure how much that makes a node more central. The columns tell you how many ways IN to each node there are, but 4 different nodes have 2 ways in, not just e. I think the right way to think of this is to go a step further back and see how many ways there are into a node which, in turn, can feed into each node. Obviously, you can keep going backwards with this. Given all this, I'm not sure how much I'd trust my intuition.
+# MAGIC     
+# MAGIC     
+# MAGIC     
+# MAGIC     
 
 # COMMAND ----------
 
@@ -245,7 +263,10 @@ TOY_ADJ_MATR
 
 # part d - use TOY_ADJ_MATR to create a right stochastic transition matrix for this graph
 ################ YOUR CODE HERE #################
-transition_matrix = None # replace with your code
+#transition_matrix = None # replace with your code
+
+transition_matrix = TOY_ADJ_MATR.to_numpy()
+transition_matrix = transition_matrix/transition_matrix.sum(axis = 1)[:, None]
 
 ################ (END) YOUR CODE #################
 print(transition_matrix)
@@ -270,9 +291,14 @@ def power_iteration(xInit, tMatrix, nIter, verbose = True):
     NOTE: if the 'verbose' flag is on, your function should print the step
     number and the current matrix at each iteration.
     """
-    state_vector = None
+    state_vector = xInit
     ################ YOUR CODE HERE #################
 
+    for i in range(nIter):
+      
+      state_vector = np.matmul(state_vector, tMatrix)
+      if verbose == True:
+        print(f"Step number: {i}, State vector: {state_vector}")
     
     
     
@@ -283,7 +309,7 @@ def power_iteration(xInit, tMatrix, nIter, verbose = True):
 
 # part e - run 10 steps of the power_iteration (RUN THIS CELL AS IS)
 xInit = np.array([1.0, 0, 0, 0, 0]) # note that this initial state will not affect the convergence states
-states = power_iteration(xInit, transition_matrix, 10, verbose = True)
+states = power_iteration(xInit, transition_matrix, 50, verbose = True)
 
 # COMMAND ----------
 
@@ -296,6 +322,10 @@ states = power_iteration(xInit, transition_matrix, 10, verbose = True)
 # MAGIC Node D: 0.23684211  
 # MAGIC Node E: 0.31578947  
 # MAGIC ```
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
