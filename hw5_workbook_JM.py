@@ -298,7 +298,7 @@ def power_iteration(xInit, tMatrix, nIter, verbose = True):
       
       state_vector = np.matmul(state_vector, tMatrix)
       if verbose == True:
-        print(f"Step number: {i}, State vector: {state_vector}")
+        print(f"Step number: {i}, State vector: {state_vector}, Sum of Weights: {np.sum(state_vector)}")
     
     
     
@@ -350,15 +350,26 @@ states = power_iteration(xInit, transition_matrix, 50, verbose = True)
 # COMMAND ----------
 
 # MAGIC %md ### Q4 Student Answers:
-# MAGIC > __a)__ Type your answer here!
+# MAGIC > __a)__ **Run the provided code to create and plot our 'not nice' graph. Fill in the missing code to compute its transition matrix & run the power iteration method from question 3. What is wrong with what you see? [__`HINT:`__ _there is a visible underlying reason that it isn't converging... try adding up the probabilities in the state vector after each iteration._]**  
+# MAGIC >  
+# MAGIC > We're losing probability mass with each iteration because Node E is dangling. In the transition matrix, it has a 0 probability of going to each node on the next hop. So probability mass that goes INTO node E on each turn is lost and our overall probability shrinks with each turn. 
 # MAGIC 
-# MAGIC > __b)__ Type your answer here!
+# MAGIC > __b)__ **Identify the dangling node in this 'not nice' graph and explain how this node causes the problem you described in 'a'. How could we modify the transition matrix after each iteration to prevent this problem?**  
+# MAGIC >  
+# MAGIC > The dangling node is node E. As mentioned in my answer to 4a, we're losing probability mass that comes into E because E has no outgoing connections. We could address this loss of mass by dividing each row of the transition by the sum of the weights in the state vector, forcing the probabilities for each node back to 1.
 # MAGIC 
-# MAGIC > __c)__ Type your answer here!
+# MAGIC > __c)__ **What does it mean for a graph to be irreducible? Is the webgraph naturally irreducible? Explain your reasoning briefly.**  
+# MAGIC >  
+# MAGIC >  Irreducible just means there's a path from every node to every other node. Is the webgraph naturally irreducible? If by this you mean the graph of pages on the internet is naturally irreducible, then I think the answer is "no". It's possible to visit web pages with no outgoing links, creating a dangling node, resulting in an graph that is not irreducible. 
 # MAGIC 
-# MAGIC > __d)__ Type your answer here!  
 # MAGIC 
-# MAGIC > __e)__ Type your answer here!  
+# MAGIC > __d)__ **What does it mean for a graph to be aperiodic? Is the webgraph naturally aperiodic? Explain your reasoning briefly.**   
+# MAGIC >  
+# MAGIC > It means that there's no common denominator of all the cycle lengths in that graph greater than 1. For example, if every cycle in a particular graph was 2, 4, 6 and 8, then that graph would be periodic because they are multiples of 2. 2 is greater than 1, so the graph would be periodic. Is the web graph naturally aperiodic. I would think so. There are so many possible cycle lengths on the web, it's hard to believe they have a common denominator greater than 1. 
+# MAGIC 
+# MAGIC > __e)__ **What modification to the webgraph does PageRank make in order to guarantee aperiodicity and irreducibility? Interpret this modification in terms of our random surfer analogy.**  
+# MAGIC >  
+# MAGIC >  Two modifications. If a web page is a dangling, rather than a 0 probability of moving to another node, those probabilities are replaced with an equal probability of moving to all nodes. This is equivalent to a web surfer choosing a random destination from all the web pages on the internet as their next destination. This is teleportation. The second modification also uses teleportation. x% of the time, for non-dangling nodes, they will be transported to a random node with equal probability. The other (1-x%), they will visit one of the outlinks of the node they are on with equal probability. The two conditions together guarantee aperiodicity and irreducibility. 
 
 # COMMAND ----------
 
@@ -381,10 +392,28 @@ display(nx.draw(G, pos=nx.circular_layout(G), with_labels=True, alpha = 0.5))
 # HINT: feel free to use the functions get_adj_matr() and power_iteration() you wrote above
 ################ YOUR CODE HERE #################
 
+TOY_ADJ_MATR_2 = get_adj_matr(TOY2_GRAPH)
+transition_matrix_2 = TOY_ADJ_MATR_2.to_numpy()
+transition_matrix_2 = transition_matrix_2/transition_matrix_2.sum(axis = 1)[:, None]
+transition_matrix_2 = np.nan_to_num(transition_matrix_2)
 
+# provide equal weights to start. Seems fairer!
+n_nodes = len(TOY2_GRAPH['nodes'])
+xInit_2 = np.full((n_nodes,),1/n_nodes)
 
+states_2 =  power_iteration(xInit_2, transition_matrix_2, 10, verbose = True)
+# print(transition_matrix_2)
+# print(TOY_ADJ_MATR_2)
 
 ################ (END) YOUR CODE #################
+
+# COMMAND ----------
+
+transition_matrix_2
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
