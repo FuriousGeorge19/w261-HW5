@@ -447,13 +447,38 @@ wikiRDD = sc.textFile(DATA_PATH + '/all-pages-indexed-out.txt')
 
 # COMMAND ----------
 
+# MAGIC %sh
+# MAGIC cat /dbfs/mnt/mids-w261/HW5/test_graph.txt
+
+# COMMAND ----------
+
 # display testRDD (RUN THIS CELL AS IS)
 testRDD.take(10)
 
 # COMMAND ----------
 
 # display indexRDD (RUN THIS CELL AS IS)
-indexRDD.take(10)
+indexRDD.take(30)
+
+# COMMAND ----------
+
+#testRDD.map(lambda x: x.split('\t')).flatMap(lambda x: [x[0], ast.literal_eval(x[1]).keys()]).collect()  #.map(lambda x: (x[1],x[0]) )
+
+testRDD.map(lambda x: x.split('\t')).flatMap(lambda x: [x[0]] +  list(ast.literal_eval(x[1]).keys())).distinct().count()
+
+#night fishing is good tour, 2008 in sapporo x2
+#night fishing x3
+#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '2921').collect()
+# this brings back: https://en.wikipedia.org/wiki/%22Fish_Alive%22_30min.,_1_Sequence_by_6_Songs_Sakanaquarium_2009_@_Sapporo
+
+#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '11777840').collect()
+# 3 outlinks, results say it should be 2, but only 2 in the body of the article: Out[22]: [('11777840', 'Shin-shiro (album)')]
+
+#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '13636570').collect()
+# 3 outlinks, but only 2 in the body of the article: [('13636570', 'Victor Entertainment')]
+
+#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: 'Sapporo' in x[1] and x).collect()
+# 3 outlinks, but only 2 in the body of the article: [('13636570', 'Victor Entertainment')]
 
 # COMMAND ----------
 
@@ -478,9 +503,15 @@ wikiRDD.take(10)
 # COMMAND ----------
 
 # MAGIC %md ### Q5 Student Answers:
-# MAGIC > __a)__ Type your answer here!  
+# MAGIC > __a)__ **In what format is the raw data? What does the first value represent? What does the second part of each line represent?**  
+# MAGIC >  
+# MAGIC > The first part of each line is a node id. The second part of each line is a dictionary of that node's outlinks. The keys in each dictionary are the node ids of the outlinks and the values are the number of outlinks from that node to each particular outlink. `'4': 3` in `5	{'4': 3, '2': 1, '6': 1}` means there are 3 links from node 5 to node 4. 
 # MAGIC 
-# MAGIC > __b)__ Type your answer here! 
+# MAGIC > __b)__ **Run the provided bash command to count the number of records in the raw dataset. Explain why this is _not_ the same as the number of total nodes in the graph.**  
+# MAGIC >  
+# MAGIC > If a node doesn't have an outlink to another node, it's node id will not appear as a 'key' (if you view the left most value as a key) in the RDD. It may, however, be a dangling node that's pointed TO by one of the other nodes, and therefore in one of the RDD's dictionaries. 
+# MAGIC 
+# MAGIC 
 # MAGIC 
 # MAGIC > __d)__ Type your answer here!  
 
@@ -500,7 +531,7 @@ def count_nodes(dataRDD):
     """    
     ############## YOUR CODE HERE ###############
 
-    
+    totalCount = dataRDD.map(lambda x: x.split('\t')).flatMap(lambda x: [x[0]] +  list(ast.literal_eval(x[1]).keys())).distinct().count()
     
     
     ############## (END) YOUR CODE ###############   
