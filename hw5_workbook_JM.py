@@ -513,7 +513,13 @@ wikiRDD.take(10)
 # MAGIC 
 # MAGIC 
 # MAGIC 
-# MAGIC > __d)__ Type your answer here!  
+# MAGIC > __d)__ **How many dangling nodes are there in this wikipedia graph?**  
+# MAGIC >  
+# MAGIC > The number of dangling nodes is the total number of nodes minus number of records. The reason for this is that dangling nodes have no records of their neighbors. In this case, we have 15,192,277 total nodes minus 5,781,290 records which equal 9,410,987 dangling nodes. 
+
+# COMMAND ----------
+
+15192277 -  5781290
 
 # COMMAND ----------
 
@@ -576,9 +582,13 @@ print(f'Total Nodes: {tot}')
 
 # MAGIC %md ### Q6 Student Answers:
 # MAGIC 
-# MAGIC > __b)__ Type your answer here! 
+# MAGIC > __b)__ **In the context of the PageRank algorithm, how is information about a node's out degree used?**   
+# MAGIC >  
+# MAGIC > At each iteration, each node's PageRank is divided equally by its out degree and assigned to each of its out nodes. 
 # MAGIC 
-# MAGIC > __c)__ Type your answer here! 
+# MAGIC > __c)__ **What does it mean if a node's out-degree is 0? In PageRank how will we handle these nodes differently than others?**  
+# MAGIC >  
+# MAGIC > It means that node is dangling and has no out nodes. PageRank assigns each dangling node a a 1/N weight, where N is the number of nodes in the graph, effectively allowing it to teleport, with equal probability, to any node in the network on the next iteration. 
 
 # COMMAND ----------
 
@@ -598,13 +608,30 @@ def count_degree(dataRDD, n):
     
     ############## YOUR CODE HERE ###############
 
+    tempRDD = dataRDD.map(lambda x: parse(x)).map(lambda x: (x[0], ((np.sum(list(x[1].values()))), 1)) ).cache()
+  
+    seqOp = lambda x, y: (x[0] + y[1][0],  x[1] + y[1][1])
+    combOp = lambda p0, p1: (p0[0] + p1[0], p0[1] + p1[1])
     
+    tot_out, tot_nodes = tempRDD.aggregate( (0,0), seqOp, combOp )
     
-    
+    avgDegree = tot_out/tot_nodes
+    top = tempRDD.sortBy(lambda x: x[1][0], ascending=False).map(lambda x: (x[0], x[1][0])).take(10)
+    sampledCounts = tempRDD.map(lambda x: x[1][0]).takeSample(False, 1000)
+
     
     ############## (END) YOUR CODE ###############
-    
+    #return avgDegree, top, sampledCounts
+  
     return top, avgDegree, sampledCounts
+
+# COMMAND ----------
+
+testRDD.collect()
+
+# COMMAND ----------
+
+testRDD.map(lambda x: parse(x)).map(lambda x: (x[0], ((np.sum(list(x[1].values()))), 1)) ).collect()
 
 # COMMAND ----------
 
