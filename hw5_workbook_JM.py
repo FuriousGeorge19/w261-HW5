@@ -631,7 +631,7 @@ testRDD.collect()
 
 # COMMAND ----------
 
-testRDD.map(lambda x: parse(x)).map(lambda x: (x[0], ((np.sum(list(x[1].values()))), 1)) ).collect()
+#testRDD.map(lambda x: parse(x)).map(lambda x: (x[0], ((np.sum(list(x[1].values()))), 1)) ).collect()
 
 # COMMAND ----------
 
@@ -700,6 +700,10 @@ display(plt.show())
 
 # COMMAND ----------
 
+testRDD.collect()
+
+# COMMAND ----------
+
 # part c - job to initialize the graph (RUN THIS CELL AS IS)
 def initGraph(dataRDD):
     """
@@ -716,18 +720,69 @@ def initGraph(dataRDD):
     is sufficient for Question 8 where you'll run PageRank.
     """
     ############## YOUR CODE HERE ###############
-
+    
+    """
+    MY NOTES:
+    - EASY PART: FOR EACH NON-DANGLING NODE (HAS A RECORD) IN THE MAP PHASE, EMIT:
+      (NODE_ID, set of tuples of form (outlink_node, outlink_count))
+    - EXAMPLE: ('A', {('B', 1), ('C', 2)})
+    - HOW TO HANDLE DANGLING NODES?
+    - For every outlink node, emit (node_id, {empty_set}). For example, if 'A' was a destination node this time, emit:
+    - ('A', {})
+    
+    
+    
+    
+    
+    
+    
+    """
+    
+    
+    
     # write any helper functions here
     
+    def parse(line):
+        node, edges = line.split('\t')
+        return (node, ast.literal_eval(edges))
+
+    def emit_outlinks(node_outlinks_tuple):
+
+        node, outlinks = node_outlinks_tuple
+
+        #node_outlink_list = []
+        yield (node, set(list(outlinks.items())))
+
+        for o in outlinks.keys():
+            yield (o, set() )
+
+    def emit_edges(line, init_value):
+        # line is tuple, first element is reference node. second is a SET of tuples. Each of THOSE tuples in turn 
+        # represent the reference node's outlinks along with the number of those outlinks from that node. 
+        ref_node, outlink_set = line
+        
+        edges = [] # list of unique edges
+        #edge_count = 0 # count of edges, including repeated ones
+        # edge_count will make distribution of page rank easier in Q8
+        
+        for o in outlink_set:
+            edges.append( ((ref_node, o[0]), o[1]) )
+            #edge_count += int(o[i])
+        return (ref_node, (init_value,  edges))
     
     
-    
-    
-    
-    
-    
+   
     
     # write your main Spark code here
+    
+    
+   
+    
+    ############## YOUR CODE HERE ###############
+
+    tempRDD = dataRDD.map(lambda x: parse(x)).flatMap(emit_outlinks).reduceByKey(lambda x, y: x.union(y)).cache()
+    N = tempRDD.count()
+    graphRDD = tempRDD.map(lambda x: emit_edges(x, 1/N))
     
     
     
@@ -736,6 +791,52 @@ def initGraph(dataRDD):
     ############## (END) YOUR CODE ##############
     
     return graphRDD
+
+# COMMAND ----------
+
+#alist
+
+# COMMAND ----------
+
+def parse(line):
+    node, edges = line.split('\t')
+    return (node, ast.literal_eval(edges))
+  
+def emit_edges(node_edges_tuple):
+
+    node, edges = node_edges_tuple
+
+    #node_outlink_list = []
+    yield (node, set(list(edges.items())))
+
+    for e in edges.keys():
+        yield (e, set() )
+
+        
+alist = testRDD.map(parse).flatMap(emit_edges).reduceByKey(lambda x, y: x.union(y)).collect()
+#testRDD.map(parse).flatMap(emit_edges).reduceByKey(lambda x, y: x.union(y)).collect()
+
+# COMMAND ----------
+
+adict = {'4': 3, '2': 1, '6': 1}
+for e in adict.keys():
+  print(e, type({}))
+
+# COMMAND ----------
+
+alist
+
+# COMMAND ----------
+
+type(alist[1][1])
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
@@ -759,6 +860,10 @@ start = time.time()
 print(f'Total number of records: {wikiGraphRDD.count()}')
 print(f'First record: {wikiGraphRDD.take(1)}')
 print(f'... initialization continued: {time.time() - start} seconds')
+
+# COMMAND ----------
+
+#wikiGraphRDD.take(5)
 
 # COMMAND ----------
 
@@ -823,6 +928,13 @@ class FloatAccumulatorParam(AccumulatorParam):
 
 # COMMAND ----------
 
+# ('9', (0.09090909090909091, [(('9', '5'), 1), (('9', '2'), 1)])),
+#  ('10', (0.09090909090909091, [(('10', '5'), 1)])),
+#  ('4', (0.09090909090909091, [(('4', '2'), 1), (('4', '1'), 1)])),
+#  ('1', (0.09090909090909091, [])),
+
+# COMMAND ----------
+
 # part d - job to run PageRank (RUN THIS CELL AS IS)
 def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
     """
@@ -851,28 +963,79 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
     # please document the purpose of each clearly 
     # for reference, the master solution has 5 helper functions.
 
-
-            
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    def add_edge_count(record):
+        # add total # of edges, inclusive of repeats, between page_rank and edge list, so we're not recounting it on each loop
+        node_id, page_rank, edges = record[0], record[1][0], record[1][1]
         
+        edge_count = 0
+        for e in edges:
+            edge_count += int(e[1])
+            
+        new_record = (node_id, (page_rank, edge_count, edges))
+        return new_record
+    
+    def dist_pr(record, mmAccum):
+        """
+        - first phase map. for each of edge in record:
+        - emit (outlink_node_id, outlink_node_page_rank_share) 
+        - if record has no edge, add page_rank to mmAccum
+        - emit record with page_rank set to 0 so node page rank starts from 0 in the reducer
+        """
+        
+        node_id, pr, edge_count, edges = record[0], record[1][0], record[1][1], record[1][2]
+        
+        for e in edges:
+            # e[0][1] is the outlink node, e[1] is the number of edges TO that outlink node
+            yield (e[0][1], e[1]/edge_count*pr)
+            
+        # if edge_count = 0 is dangling node and page rank needs to be added to accumulator
+        if edge_count == 0:
+            mmAccum += pr
+        
+        # emit record with page_rank reset to 0
+        yield (node_id, (0.0, edge_count, edges))
+    
+    
+    
+    
+    
+#        ('2', (0.0, 1, [(('2', '3'), 1)])),
+#        ('2', 0.09090909090909091),
+#        ('2', 0.018181818181818184),
+#        ('2', 0.030303030303030304),
+#        ('2', 0.045454545454545456),
+#        ('2', 0.045454545454545456),
+
+    def prReducer(record_0, record_1, mmAccum):
+       if record_0 or record_1 == graph_node
+          yield graph_node with pr_value incremented
+       if both are value_nodes
+         yield (node_id, some of page_rank)
+        
+    
+    
+    
+    #USE totAccum on each iteration to make sure total weights at end of each pass sum to 1.0
+    
+    
+    
     # write your main Spark Job here (including the for loop to iterate)
     # for reference, the master solution is 21 lines including comments & whitespace
 
+    """
+    - For each node_id, emit 
+    
+    """
+    
+    graphInitRDD = graphInitRDD.map(add_edge_count) # add edge_counts so not calculating on each iteration
     
     
+    steadyStateRDD =  graphInitRDD.flatMap(lambda x: dist_pr(x, mmAccum)).sortByKey().reduceByKey(lambda x, y: prReducer(x, y, mmAccum))
+ 
     
+    #for i in range(max_Iter):    
+    
+ 
     
     
     
@@ -883,6 +1046,28 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
     ############## (END) YOUR CODE ###############
     
     return steadyStateRDD
+
+# COMMAND ----------
+
+  
+
+# COMMAND ----------
+
+testGraphRDD.collect()
+
+# COMMAND ----------
+
+nIter = 20
+testGraphRDD = initGraph(testRDD)
+start = time.time()
+test_results = runPageRank(testGraphRDD, alpha = 0.15, maxIter = nIter, verbose = False)
+
+# COMMAND ----------
+
+test_results.collect()
+
+#testGraphRDD.collect()
+#test_results.collect()
 
 # COMMAND ----------
 
