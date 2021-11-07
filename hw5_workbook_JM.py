@@ -215,7 +215,7 @@ print(TOY_ADJ_LIST)
 # MAGIC 
 # MAGIC * __b) short response:__ What is the "Markov Property" and what does it mean in the context of PageRank?
 # MAGIC 
-# MAGIC * __c) short response:__ A Markov chain consists of $n$ states plus an $n\times n$ transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the $n$ states? what implications does this have about the size of the transition matrix?
+# MAGIC * __c) short response:__ A Markov chain consists of \\$n$\\ states plus an $n\times n$ transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the $n$ states? what implications does this have about the size of the transition matrix?
 # MAGIC 
 # MAGIC * __d) code + short response:__ What is a "right stochastic matrix"? Fill in the code below to compute the transition matrix for the toy graph from question 2. [__`HINT:`__ _It should be right stochastic. Using numpy this calculation can be done in one line of code._]
 # MAGIC 
@@ -782,7 +782,7 @@ def initGraph(dataRDD):
 
     tempRDD = dataRDD.map(lambda x: parse(x)).flatMap(emit_outlinks).reduceByKey(lambda x, y: x.union(y)).cache()
     N = tempRDD.count()
-    graphRDD = tempRDD.map(lambda x: emit_edges(x, 1/N))
+    graphRDD = tempRDD.map(lambda x: emit_edges(x, 1/N)).cache()
     
     
     
@@ -965,6 +965,7 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
 
     def add_edge_count(record):
         # add total # of edges, inclusive of repeats, between page_rank and edge list, so we're not recounting it on each loop
+        # add a field to store record level missing mass for dangling nodes
         node_id, page_rank, edges = record[0], record[1][0], record[1][1]
         
         edge_count = 0
@@ -973,13 +974,25 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
             
         new_record = (node_id, (page_rank, edge_count, edges))
         return new_record
-    
-    def dist_pr(record, mmAccum):
+
+      
+      
+    def dist_pr(record):
         """
         - first phase map. for each of edge in record:
         - emit (outlink_node_id, outlink_node_page_rank_share) 
-        - if record has no edge, add page_rank to mmAccum
+        - if record has no edge, add weight to missing mass accumulator
         - emit record with page_rank set to 0 so node page rank starts from 0 in the reducer
+        
+        incoming data (record)
+        - a node, it's page rank number of edges and edge list
+        - of the form ('4', (0.09090909090909091, 2, [(('4', '2'), 1), (('4', '1'), 1)])) 
+        - (node_id, (page_rank, [((node_id, edge_id_1), #edge_1), ((node_id, edge_id_2), , #edge_2), etc.  ])
+        
+        outgoing data, 
+        - each edge's share of node_id's page_rank (edge_id_1, pr_1), (edge_id_2, pr_2), etc.
+        - the incoming record with its page_rank reset to 0
+        
         """
         
         node_id, pr, edge_count, edges = record[0], record[1][0], record[1][1], record[1][2]
@@ -988,33 +1001,97 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
             # e[0][1] is the outlink node, e[1] is the number of edges TO that outlink node
             yield (e[0][1], e[1]/edge_count*pr)
             
-        # if edge_count = 0 is dangling node and page rank needs to be added to accumulator
-        if edge_count == 0:
-            mmAccum += pr
-        
-        # emit record with page_rank reset to 0
+#         # if edge_count = 0 just emit record and let accumulator function handle. Only records to leave this function
+#         # within original page_rank weights not zeroed out
+#         if edge_count == 0:
+#             yield record
+#         else:
+          # emit record with page_rank reset to 0
+         
         yield (node_id, (0.0, edge_count, edges))
     
     
     
     
-    
-#        ('2', (0.0, 1, [(('2', '3'), 1)])),
-#        ('2', 0.09090909090909091),
-#        ('2', 0.018181818181818184),
-#        ('2', 0.030303030303030304),
-#        ('2', 0.045454545454545456),
-#        ('2', 0.045454545454545456),
+# ('1', 0.045454545454545456),
+# ('1', (0.09090909090909091, 0, []))
 
-    def prReducer(record_0, record_1, mmAccum):
-       if record_0 or record_1 == graph_node
-          yield graph_node with pr_value incremented
-       if both are value_nodes
-         yield (node_id, some of page_rank)
+    
+    def updateMM_and_danglers(record, mm):
         
+        # check if this is page_rank or graph structure node
+        if isinstance(record[1], tuple): 
+            # check if it's a dangling node with 0 edges
+            if record[1][1] == 0:
+                # add dangling weight to missing mass accumulator
+                mm.add(record[1][1])
+                # yield graph node structure with page_rank set to 0
+                yield ( record[0], (0.0, 0, []))
+        
+        # if it's a non-dangling node, just pass the record through
+        else: 
+            yield record
+  
+  
+  
+    def prReducer(value_0, value_1):
+        """
+        Incoming stream from mapper has 2 types of key-value pairs. Both have keys that are node id's. 
+        Most of these key-value pairs were the edges output by the mapper on the last step along with the page_rank
+        value they received from their source node. 
+        
+        Some of these key-value pairs are the graph structure of individual nodes. One key aspect of all of these is that 
+        all of their page_rank value should have been set to 0. This reducer will add to that value based the incoming
+        page_rank value on this step. 
+        
+        Example key-page_rank records:
+        ('1', 0.045)
+        ('2', 0.091)
+        
+        Example graph records:
+        ('1', (0.0, 0, [])) -> empty edge list
+        ('2', (0.0, 1, [(('2', '3'), 1)]))  -> 1 entry in edge list
+        
+        Reducer updates the graph with the total page_rank for each node. Challenge is to identify the node type and account for it properly. 
+        """
+        
+        
+        
+        # if value_0 is a tuple, it's a graph record. value_1 must be a page_rank value
+        # add value_1's page_rank to the graph record total. a `yield` statement won't work here. Needs to be return. 
+        
+        if isinstance(value_0, tuple):
+         
+            return ( value_0[0] + value_1, value_0[1], value_0[2])
+        
+        # same as first condition, but with value_1 as graph record and value_0 as page_rank value
+        elif isinstance(value_1, tuple):
+          
+            return ( value_1[0] + value_0, value_1[1], value_1[2])
+        
+        # if both are page_rank values, add them
+        else:
+          
+            return value_0 + value_1
+    
+    
+    def redistribute_teleport(record, N, mm):
+
+        p = record[1][0]
+        p_prime = a.value/N + d.value*(mm/N + p)
+        updated_record = (record[0], (p_prime, record[1][1], record[1][2]))
+        return updated_record
+
+      
+     
+    def get_missing_mass(record, mmAccum):
+        # if an empty edge list == dangling node, add page rank of node/recod to missing mass
+        if record[1][1] == 0:
+            mmAccum.add(record[1][0])
     
     
     
+       
     #USE totAccum on each iteration to make sure total weights at end of each pass sum to 1.0
     
     
@@ -1027,25 +1104,49 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
     
     """
     
-    graphInitRDD = graphInitRDD.map(add_edge_count) # add edge_counts so not calculating on each iteration
+    # add edge_counts so not calculating on each iteration
+    graphInitRDD = graphInitRDD.map(add_edge_count).cache() 
+    
+    # calculate node counts once
+    N = graphInitRDD.count()
+    
+
+    
+    for i in range(maxIter):    
+    
+        # gather missing mass
+        graphInitRDD.foreach(lambda x: get_missing_mass(x, mmAccum))
+        mm = mmAccum.value
     
     
-    steadyStateRDD =  graphInitRDD.flatMap(lambda x: dist_pr(x, mmAccum)).sortByKey().reduceByKey(lambda x, y: prReducer(x, y, mmAccum))
- 
+  
+        graphInitRDD =  graphInitRDD.flatMap(lambda x: dist_pr(x)) \
+           .reduceByKey(lambda x, y: prReducer(x, y)) \
+           .map(lambda x: redistribute_teleport(x, N, mm)).cache()
     
-    #for i in range(max_Iter):    
-    
- 
-    
-    
+      # set accumulator back to 0.0 
+        mmAccum = sc.accumulator(0.0, FloatAccumulatorParam())
+
+      
+      
+    steadyStateRDD =  graphInitRDD.map(lambda x: (x[0], x[1][0]))
+      
+      
+      
+      
+      
+      
+      
+#     steadyStateRDD =  graphInitRDD.flatMap(lambda x: dist_pr(x, mmAccum)) \
+#         .foreach(lambda x: updateMM_and_danglers(x, mmAccum)).cache()
     
     
     
     
     
     ############## (END) YOUR CODE ###############
-    
     return steadyStateRDD
+    #return steadyStateRDD
 
 # COMMAND ----------
 
@@ -1057,17 +1158,33 @@ testGraphRDD.collect()
 
 # COMMAND ----------
 
+test_results.collect()
+
+# COMMAND ----------
+
 nIter = 20
 testGraphRDD = initGraph(testRDD)
 start = time.time()
-test_results = runPageRank(testGraphRDD, alpha = 0.15, maxIter = nIter, verbose = False)
+test_results= runPageRank(testGraphRDD, alpha = 0.15, maxIter = nIter, verbose = False)
 
 # COMMAND ----------
 
 test_results.collect()
 
-#testGraphRDD.collect()
-#test_results.collect()
+# COMMAND ----------
+
+tot = 0
+for atup in test_results.collect():
+    tot += atup[1][0]
+print(tot)
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
@@ -1111,12 +1228,65 @@ full_results.takeOrdered(20, key=lambda x: - x[1])
 
 # COMMAND ----------
 
+# MAGIC %md __`expected results for the full data`__
+# MAGIC 
+# MAGIC ```
+# MAGIC 
+# MAGIC top_20 = [(13455888, 0.0015447247129832947),
+# MAGIC  (4695850, 0.0006710240718906518),
+# MAGIC  (5051368, 0.0005983856809747697),
+# MAGIC  (1184351, 0.0005982073536467391),
+# MAGIC  (2437837, 0.0004624928928940748),
+# MAGIC  (6076759, 0.00045509400641448284),
+# MAGIC  (4196067, 0.0004423778888372447),
+# MAGIC  (13425865, 0.00044155351714348035),
+# MAGIC  (6172466, 0.0004224002001845032),
+# MAGIC  (1384888, 0.0004012895604073632),
+# MAGIC  (6113490, 0.00039578924771805474),
+# MAGIC  (14112583, 0.0003943847283754762),
+# MAGIC  (7902219, 0.000370098784735699),
+# MAGIC  (10390714, 0.0003650264964328283),
+# MAGIC  (12836211, 0.0003619948863114985),
+# MAGIC  (6237129, 0.0003519555847625285),
+# MAGIC  (6416278, 0.00034866235645266493),
+# MAGIC  (13432150, 0.00033936510637418247),
+# MAGIC  (1516699, 0.00033297500286244265),
+# MAGIC  (7990491, 0.00030760906265869104)]
+# MAGIC  ```
+
+# COMMAND ----------
+
 top_20 = full_results.takeOrdered(20, key=lambda x: - x[1])
 
 # COMMAND ----------
 
-# Save the top_20 results to disc for use later. So you don't have to rerun everything if you restart the cluster.
+spark.conf.set(
+  f"fs.azure.sas.{blob_container}.{storage_account}.blob.core.windows.net",
+  dbutils.secrets.get(scope = secret_scope, key = secret_key)
+)
 
+
+
+# COMMAND ----------
+
+from pyspark.sql.functions import col, max
+
+blob_container = "w261-team-9" # The name of your container created in https://portal.azure.com
+storage_account = "w261team9" # The name of your Storage account created in https://portal.azure.com
+secret_scope = "w261team9" # The name of the scope created in your local computer using the Databricks CLI
+secret_key = "w261team9key" # The name of the secret key created in your local computer using the Databricks CLI 
+blob_url = f"wasbs://{blob_container}@{storage_account}.blob.core.windows.net"
+mount_path = "/mnt/mids-w261"
+
+# COMMAND ----------
+
+# Save the top_20 results to disc for use later. So you don't have to rerun everything if you restart the cluster.
+#tempResults_rdd = sc.parallelize(top_20)
+
+tempResults_DF = spark.createDataFrame(data=top_20)
+blob_url = 'wasbs://w261-team-9@w261team9.blob.core.windows.net'
+
+tempResults_DF.write.mode('overwrite').parquet(f"{blob_url}/Q8_top20_JM")
 
 # COMMAND ----------
 
