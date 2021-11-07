@@ -97,13 +97,13 @@ spark
 # MAGIC 
 # MAGIC > __d)__ **How does parallel breadth-first-search get around the problem that you identified in part `c`? At what expense?**
 # MAGIC >  
-# MAGIC >  Parallel breadth-first-search gets around a global priority queue by performing splitting the search frontier across multiple mappers, allowing the work to be parallelized. This allows multiple paths to the same node to be found by different mappers. The reducers reconcile these by selecting the one with the shortest path. The expense is potentially a lot of extra, unneccessary work is done. Lin & Dyer characterize this unnecessary work as work done within the search frontier (redundant, repeated work). The productive work is done *at* the search frontier, where potentially new, shorter paths are found. 
+# MAGIC >  Parallel breadth-first-search gets around a global priority queue by splitting the search frontier across multiple mappers, allowing the work to be parallelized. This allows multiple paths to the same node to be found by different mappers. The reducers reconcile these by selecting the one with the shortest path. The expense is potentially a lot of extra, unneccessary work is done. Lin & Dyer characterize this unnecessary work as work done within the search frontier (redundant, repeated work). The productive work is done *at* the search frontier, where potentially new, shorter paths are found. 
 
 # COMMAND ----------
 
 # MAGIC %md # Question 2: Representing Graphs 
 # MAGIC 
-# MAGIC In class you saw examples of adjacency matrix and adjacency list representations of graphs. These data structures were probably familiar from HW3, though we hadn't before talked about them in the context of graphs. In this question we'll discuss some of the tradeoffs associated with these representations. __`NOTE:`__ We'll use the graph from Figure 5.1 in Lin & Dyer as a toy example. For convenience in the code below we'll label the nodes `A`, `B`, `C`, `D`, and `E` instead of $n_1$, $n_2$, etc but otherwise you should be able to follow along & check our answers against those in the text.
+# MAGIC In class you saw examples of adjacency matrix and adjacency list representations of graphs. These data structures were probably familiar from HW3, though we hadn't before talked about them in the context of graphs. In this question we'll discuss some of the tradeoffs associated with these representations. __`NOTE:`__ We'll use the graph from Figure 5.1 in Lin & Dyer as a toy example. For convenience in the code below we'll label the nodes `A`, `B`, `C`, `D`, and `E` instead of  \\(n_1\\), \\(n_2\\), etc but otherwise you should be able to follow along & check our answers against those in the text.
 # MAGIC 
 # MAGIC 
 # MAGIC <img src="https://github.com/kyleiwaniec/w261_assets/blob/master/images/HW5/Lin-Dyer-graph-Q1.png?raw=true" width=50%>
@@ -130,7 +130,7 @@ spark
 # MAGIC 
 # MAGIC > __b)__ **Run the provided code to create and plot our toy graph. Is this graph directed or undirected? Explain how the adjacency matrices for directed graphs will differ from those of undirected graphs.**   
 # MAGIC >   
-# MAGIC > This is a directed graph. The adjacency matrix for an undirected graph is symmetric. If there's a connection between node A and B, that implies a connection between node B and A and vice versa. That symmetry need not exist in a directed graph's adjacency matrix. It's quite possible for there to be a connection between node A and B with no corresponding connection between node B and A. (Direction matters with directed graphs.)
+# MAGIC > This is a directed graph. For an undirected graph, if there's a connection between node A and B, that implies a connection between node B and A and vice versa. That *logical* symmetry typically results in an *asymmetric* graph, with connections only represented *below* the diagonal. (It would be redunant to have entries for A's connection to B below the diagonal and B's connection to A above the diagonal.) Conversely, in a directed graph's adjacency matrix, a connection between node A and B  may or may not have a corresponding connection between node B and A. (Direction matters with directed graphs.) Because of that, the whole matrix must be available for representing a directed graph. 
 
 # COMMAND ----------
 
@@ -215,7 +215,7 @@ print(TOY_ADJ_LIST)
 # MAGIC 
 # MAGIC * __b) short response:__ What is the "Markov Property" and what does it mean in the context of PageRank?
 # MAGIC 
-# MAGIC * __c) short response:__ A Markov chain consists of \\$n$\\ states plus an $n\times n$ transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the $n$ states? what implications does this have about the size of the transition matrix?
+# MAGIC * __c) short response:__ A Markov chain consists of \\(n\\) states plus an \\(n\times n\\) transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the \\(n\\) states? what implications does this have about the size of the transition matrix?
 # MAGIC 
 # MAGIC * __d) code + short response:__ What is a "right stochastic matrix"? Fill in the code below to compute the transition matrix for the toy graph from question 2. [__`HINT:`__ _It should be right stochastic. Using numpy this calculation can be done in one line of code._]
 # MAGIC 
@@ -235,9 +235,9 @@ print(TOY_ADJ_LIST)
 # MAGIC > Memorylessness with regard to state changes. The next state only depends on the current state and not the sequence of events that preceded it. In the context of PageRank, it means given a particular node, the probability of the next node in the random walk of our proverbial web surfer only depends on the the properties of that particular node and not in any way on the path they took to get to that node. (In this case, the probabilities of moving to one of the nodes linked to from this particular node.) 
 # MAGIC 
 # MAGIC 
-# MAGIC > __c)__ **A Markov chain consists of $n$ states plus an $n\times n$ transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the $n$ states? what implications does this have about the size of the transition matrix?**  
+# MAGIC > __c)__ **A Markov chain consists of \\(n\\) states plus an \\(n\times n\\) transition probability matrix. In the context of PageRank & a random walk over the WebGraph what are the \\(n\\) states? What implications does this have about the size of the transition matrix?**  
 # MAGIC >   
-# MAGIC > The n states are just the n web pages/nodes in the graph. n states implies n x n possible transitions (i.e. from each node to every other node, including itself), which means the transition matrix has a size of n x n = n^2.
+# MAGIC > The \\(n\\) states are just the \\(n\\) web pages/nodes in the graph. \\(n\\) states implies \\(n\times n\\) possible transitions (i.e. from each node to every other node, including itself), which means the transition matrix has a size \\(n\times n = n^2\\).
 # MAGIC 
 # MAGIC 
 # MAGIC > __d)__ **What is a "right stochastic matrix"? Fill in the code below to compute the transition matrix for the toy graph from question 2.**  
@@ -325,7 +325,45 @@ states = power_iteration(xInit, transition_matrix, 50, verbose = True)
 
 # COMMAND ----------
 
+# MAGIC %md ##### Ricardo Jenez version. Multiplies the transition matrix times itself on each iteration and then applies that to the state vector. Each iteration effectively accomplishes 2^n iterations in my solution where n is the number of iterations in my version. Converges much faster than my version.  
 
+# COMMAND ----------
+
+# part e - compute the steady state using the transition matrix 
+def power_iteration_2(xInit, tMatrix, nIter, verbose = True):
+    """
+    Function to perform the specified number of power iteration steps to 
+    compute the steady state probability distribution for the given
+    transition matrix.
+    
+    Args:
+        xInit     - (n x 1 array) representing inial state
+        tMatrix  - (n x n array) transition probabilities
+        nIter     - (int) number of iterations
+    Returns:
+        state_vector - (n x 1 array) representing probability 
+                        distribution over states after nSteps.
+    
+    NOTE: if the 'verbose' flag is on, your function should print the step
+    number and the current matrix at each iteration.
+    """
+    state_vector = None
+    ################ YOUR CODE HERE #################
+    for i in range(nIter):
+      tMatrix = tMatrix.dot(tMatrix)
+      state_vector = xInit.dot(tMatrix)
+      if verbose == True:
+        nl = '\n'
+        print(f'step = {i+1}, {nl}state_vector= {nl}{state_vector}{nl}')
+    ################ (END) YOUR CODE #################
+    return state_vector
+
+# COMMAND ----------
+
+# part e - run 10 steps of the power_iteration (RUN THIS CELL AS IS)
+xInit = np.array([1.0, 0, 0, 0, 0]) # note that this initial state will not affect the convergence states
+states = power_iteration_2(xInit, transition_matrix, 10, verbose = True)
+print(states)
 
 # COMMAND ----------
 
@@ -356,7 +394,7 @@ states = power_iteration(xInit, transition_matrix, 50, verbose = True)
 # MAGIC 
 # MAGIC > __b)__ **Identify the dangling node in this 'not nice' graph and explain how this node causes the problem you described in 'a'. How could we modify the transition matrix after each iteration to prevent this problem?**  
 # MAGIC >  
-# MAGIC > The dangling node is node E. As mentioned in my answer to 4a, we're losing probability mass that comes into E because E has no outgoing connections. We could address this loss of mass by dividing each row of the transition by the sum of the weights in the state vector, forcing the probabilities for each node back to 1.
+# MAGIC > The dangling node is node E. As mentioned in my answer to 4a, we're losing probability mass that comes into E because E has no outgoing connections. We could, after each iteration in the transition matrix, distribute the probability for node E out to all the nodes in the graph evenly (\\(\frac{1}{N}\\) goes to each node) thus ensuring that the probabilities sum to 1. 
 # MAGIC 
 # MAGIC > __c)__ **What does it mean for a graph to be irreducible? Is the webgraph naturally irreducible? Explain your reasoning briefly.**  
 # MAGIC >  
@@ -369,7 +407,7 @@ states = power_iteration(xInit, transition_matrix, 50, verbose = True)
 # MAGIC 
 # MAGIC > __e)__ **What modification to the webgraph does PageRank make in order to guarantee aperiodicity and irreducibility? Interpret this modification in terms of our random surfer analogy.**  
 # MAGIC >  
-# MAGIC >  Two modifications. If a web page is a dangling, rather than a 0 probability of moving to another node, those probabilities are replaced with an equal probability of moving to all nodes. This is equivalent to a web surfer choosing a random destination from all the web pages on the internet as their next destination. This is teleportation. The second modification also uses teleportation. x% of the time, for non-dangling nodes, they will be transported to a random node with equal probability. The other (1-x%), they will visit one of the outlinks of the node they are on with equal probability. The two conditions together guarantee aperiodicity and irreducibility. 
+# MAGIC >  Two modifications. If a web page is a dangling, rather than a 0 probability of moving to another node, those probabilities are replaced with an equal probability of moving to all nodes. This is equivalent to a web surfer choosing a random destination from all the web pages on the internet as their next destination. This is teleportation. The second modification also uses teleportation. x% of the time, for non-dangling nodes, they will be transported to a random node with equal probability. The other (1-x%), they will visit one of the outlinks of the node they are on with equal probability. The two conditions together guarantee aperiodicity and irreducibility, which in turn guarantee our iterative updates will converge. 
 
 # COMMAND ----------
 
@@ -428,10 +466,6 @@ transition_matrix_2
 
 # COMMAND ----------
 
-dbutils.fs.ls(DATA_PATH)
-
-# COMMAND ----------
-
 # open test_graph.txt file to see format (RUN THIS CELL AS IS)
 with open('/dbfs/mnt/mids-w261/HW5/test_graph.txt', "r") as f_read:
   for line in f_read:
@@ -462,23 +496,11 @@ indexRDD.take(30)
 
 # COMMAND ----------
 
-#testRDD.map(lambda x: x.split('\t')).flatMap(lambda x: [x[0], ast.literal_eval(x[1]).keys()]).collect()  #.map(lambda x: (x[1],x[0]) )
+
 
 testRDD.map(lambda x: x.split('\t')).flatMap(lambda x: [x[0]] +  list(ast.literal_eval(x[1]).keys())).distinct().count()
 
-#night fishing is good tour, 2008 in sapporo x2
-#night fishing x3
-#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '2921').collect()
-# this brings back: https://en.wikipedia.org/wiki/%22Fish_Alive%22_30min.,_1_Sequence_by_6_Songs_Sakanaquarium_2009_@_Sapporo
 
-#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '11777840').collect()
-# 3 outlinks, results say it should be 2, but only 2 in the body of the article: Out[22]: [('11777840', 'Shin-shiro (album)')]
-
-#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: x[0] == '13636570').collect()
-# 3 outlinks, but only 2 in the body of the article: [('13636570', 'Victor Entertainment')]
-
-#indexRDD.map(lambda x: x.split('\t')).map(lambda x: (x[1],x[0]) ).filter(lambda x: 'Sapporo' in x[1] and x).collect()
-# 3 outlinks, but only 2 in the body of the article: [('13636570', 'Victor Entertainment')]
 
 # COMMAND ----------
 
@@ -694,9 +716,13 @@ display(plt.show())
 
 # MAGIC %md ### Q7 Student Answers:
 # MAGIC 
-# MAGIC > __a)__ Type your answer here! 
+# MAGIC > __a)__ **What is \\(N\\)? Use the analogy of the infinite random web-surfer to explain why we'll initialize each node's rank to \\(\frac{1}{N}\\). (i.e. what is the probabilistic interpretation of this choice?)**  
+# MAGIC >  
+# MAGIC >  \\(N\\) is the number of nodes in the network. Initializing each node's the pagerank to  \\(\frac{1}{N}\\) implies that, at least initially, every node has an equal chance of being visited. 
 # MAGIC 
-# MAGIC > __b)__ Type your answer here! 
+# MAGIC > __b)__ **Will it be more efficient to compute \\(N\\) before initializing records for each dangling node or after? Explain your reasoning.**  
+# MAGIC >  
+# MAGIC > After. To initialize each node in the network (by which I mean created a record for it) we need to *encounter* every node in the network first. Once we do that, we'll be in a position to count the \\(N\\) records and set the starting value in each record to \\(\frac{1}N\\)
 
 # COMMAND ----------
 
@@ -728,17 +754,9 @@ def initGraph(dataRDD):
     - EXAMPLE: ('A', {('B', 1), ('C', 2)})
     - HOW TO HANDLE DANGLING NODES?
     - For every outlink node, emit (node_id, {empty_set}). For example, if 'A' was a destination node this time, emit:
-    - ('A', {})
-    
-    
-    
-    
-    
-    
-    
+    - ('A', {})     
     """
-    
-    
+       
     
     # write any helper functions here
     
@@ -767,11 +785,9 @@ def initGraph(dataRDD):
         
         for o in outlink_set:
             edges.append( ((ref_node, o[0]), o[1]) )
-            #edge_count += int(o[i])
+          
         return (ref_node, (init_value,  edges))
-    
-    
-   
+       
     
     # write your main Spark code here
     
@@ -791,52 +807,6 @@ def initGraph(dataRDD):
     ############## (END) YOUR CODE ##############
     
     return graphRDD
-
-# COMMAND ----------
-
-#alist
-
-# COMMAND ----------
-
-def parse(line):
-    node, edges = line.split('\t')
-    return (node, ast.literal_eval(edges))
-  
-def emit_edges(node_edges_tuple):
-
-    node, edges = node_edges_tuple
-
-    #node_outlink_list = []
-    yield (node, set(list(edges.items())))
-
-    for e in edges.keys():
-        yield (e, set() )
-
-        
-alist = testRDD.map(parse).flatMap(emit_edges).reduceByKey(lambda x, y: x.union(y)).collect()
-#testRDD.map(parse).flatMap(emit_edges).reduceByKey(lambda x, y: x.union(y)).collect()
-
-# COMMAND ----------
-
-adict = {'4': 3, '2': 1, '6': 1}
-for e in adict.keys():
-  print(e, type({}))
-
-# COMMAND ----------
-
-alist
-
-# COMMAND ----------
-
-type(alist[1][1])
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-
 
 # COMMAND ----------
 
@@ -860,10 +830,6 @@ start = time.time()
 print(f'Total number of records: {wikiGraphRDD.count()}')
 print(f'First record: {wikiGraphRDD.take(1)}')
 print(f'... initialization continued: {time.time() - start} seconds')
-
-# COMMAND ----------
-
-#wikiGraphRDD.take(5)
 
 # COMMAND ----------
 
@@ -902,11 +868,18 @@ print(f'... initialization continued: {time.time() - start} seconds')
 
 # MAGIC %md ### Q8 Student Answers:
 # MAGIC 
-# MAGIC > __a)__ Type your answer here!
+# MAGIC > __a)__ **In terms of the infinite random walk analogy, interpret the meaning of the first term in the PageRank calculation: \\(\alpha * \frac{1}{|G|}\\)**   
+# MAGIC >   
+# MAGIC > This is the 'teleportation' term; the probability that, rather than arriving at one of the node's outlinks, the random surfer will end up being 'teleported' to one of any of the \\(G\\) nodes in the network. The first term \\((\alpha)\\) is the probabilty that teleportation occurs on that turn.  \\(\frac{1}{|G|}\\) is the probability that, given teleportation occurrs, that the destination will be any one of the \\(G\\) nodes. Taken together, they're the probability the random surfer arrives at any particular node due to teleportation on a given turn. 
 # MAGIC 
-# MAGIC > __b)__ Type your answer here! 
 # MAGIC 
-# MAGIC > __c)__ Type your answer here! 
+# MAGIC > __b)__ **In the equation for the PageRank calculation above what does \\(m\\) represent and why do we divide it by \\(|G|\\)?**   
+# MAGIC > 
+# MAGIC > \\(m\\) is the missing mass from dangling nodes. Dividing by \\(|G|\\) indicates that we redistribute that missing mass from the previous turn to each node in the network equally. 
+# MAGIC 
+# MAGIC > __c)__ **Keeping track of the total probability mass after each update is a good way to confirm that your algorithm is on track. How much should the total mass be after each iteration?**   
+# MAGIC >  
+# MAGIC > The total mass after each iteration (including the redistribiution of the missing mass) should sum to 1.0.
 
 # COMMAND ----------
 
@@ -925,13 +898,6 @@ class FloatAccumulatorParam(AccumulatorParam):
         return value
     def addInPlace(self, val1, val2):
         return val1 + val2
-
-# COMMAND ----------
-
-# ('9', (0.09090909090909091, [(('9', '5'), 1), (('9', '2'), 1)])),
-#  ('10', (0.09090909090909091, [(('10', '5'), 1)])),
-#  ('4', (0.09090909090909091, [(('4', '2'), 1), (('4', '1'), 1)])),
-#  ('1', (0.09090909090909091, [])),
 
 # COMMAND ----------
 
@@ -1000,37 +966,24 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
         for e in edges:
             # e[0][1] is the outlink node, e[1] is the number of edges TO that outlink node
             yield (e[0][1], e[1]/edge_count*pr)
-            
-#         # if edge_count = 0 just emit record and let accumulator function handle. Only records to leave this function
-#         # within original page_rank weights not zeroed out
-#         if edge_count == 0:
-#             yield record
-#         else:
-          # emit record with page_rank reset to 0
-         
+                     
         yield (node_id, (0.0, edge_count, edges))
     
     
-    
-    
-# ('1', 0.045454545454545456),
-# ('1', (0.09090909090909091, 0, []))
-
-    
-    def updateMM_and_danglers(record, mm):
+#     def updateMM_and_danglers(record, mm):
         
-        # check if this is page_rank or graph structure node
-        if isinstance(record[1], tuple): 
-            # check if it's a dangling node with 0 edges
-            if record[1][1] == 0:
-                # add dangling weight to missing mass accumulator
-                mm.add(record[1][1])
-                # yield graph node structure with page_rank set to 0
-                yield ( record[0], (0.0, 0, []))
+#         # check if this is page_rank or graph structure node
+#         if isinstance(record[1], tuple): 
+#             # check if it's a dangling node with 0 edges
+#             if record[1][1] == 0:
+#                 # add dangling weight to missing mass accumulator
+#                 mm.add(record[1][1])
+#                 # yield graph node structure with page_rank set to 0
+#                 yield ( record[0], (0.0, 0, []))
         
-        # if it's a non-dangling node, just pass the record through
-        else: 
-            yield record
+#         # if it's a non-dangling node, just pass the record through
+#         else: 
+#             yield record
   
   
   
@@ -1040,7 +993,7 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
         Most of these key-value pairs were the edges output by the mapper on the last step along with the page_rank
         value they received from their source node. 
         
-        Some of these key-value pairs are the graph structure of individual nodes. One key aspect of all of these is that 
+        Some of these key-value pairs are the graph structure of individual nodes. One key aspect of all of these is           that 
         all of their page_rank value should have been set to 0. This reducer will add to that value based the incoming
         page_rank value on this step. 
         
@@ -1052,7 +1005,7 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
         ('1', (0.0, 0, [])) -> empty edge list
         ('2', (0.0, 1, [(('2', '3'), 1)]))  -> 1 entry in edge list
         
-        Reducer updates the graph with the total page_rank for each node. Challenge is to identify the node type and account for it properly. 
+        Reducer updates the graph with the total page_rank for each node. Challenge is to identify the node type and           account for it properly. 
         """
         
         
@@ -1099,10 +1052,6 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
     # write your main Spark Job here (including the for loop to iterate)
     # for reference, the master solution is 21 lines including comments & whitespace
 
-    """
-    - For each node_id, emit 
-    
-    """
     
     # add edge_counts so not calculating on each iteration
     graphInitRDD = graphInitRDD.map(add_edge_count).cache() 
@@ -1131,17 +1080,6 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
       
     steadyStateRDD =  graphInitRDD.map(lambda x: (x[0], x[1][0]))
       
-      
-      
-      
-      
-      
-      
-#     steadyStateRDD =  graphInitRDD.flatMap(lambda x: dist_pr(x, mmAccum)) \
-#         .foreach(lambda x: updateMM_and_danglers(x, mmAccum)).cache()
-    
-    
-    
     
     
     ############## (END) YOUR CODE ###############
@@ -1150,41 +1088,18 @@ def runPageRank(graphInitRDD, alpha = 0.15, maxIter = 10, verbose = True):
 
 # COMMAND ----------
 
-  
+# testGraphRDD.collect()
 
 # COMMAND ----------
 
-testGraphRDD.collect()
+# test_results.collect()
 
 # COMMAND ----------
 
-test_results.collect()
-
-# COMMAND ----------
-
-nIter = 20
-testGraphRDD = initGraph(testRDD)
-start = time.time()
-test_results= runPageRank(testGraphRDD, alpha = 0.15, maxIter = nIter, verbose = False)
-
-# COMMAND ----------
-
-test_results.collect()
-
-# COMMAND ----------
-
-tot = 0
-for atup in test_results.collect():
-    tot += atup[1][0]
-print(tot)
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-
+# tot = 0
+# for atup in test_results.collect():
+#     tot += atup[1][0]
+# print(tot)
 
 # COMMAND ----------
 
